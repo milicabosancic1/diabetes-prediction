@@ -1,5 +1,5 @@
-# src/models/naive_bayes.py
 import numpy as np
+
 
 class GaussianNB:
     def __init__(self, var_smoothing: float = 1e-9):
