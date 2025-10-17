@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-
 import numpy as np
 
 from src.plotting import generate_all_plots
@@ -15,7 +14,7 @@ def resolve_csv_path() -> str:
     if os.path.isfile(data_csv):
         return data_csv
 
-    # fallback na sample ako postoji
+    # Fallback na sample ako postoji
     sample_csv = os.path.join(BASE_DIR, "data", "diabetes_sample.csv")
     if os.path.isfile(sample_csv):
         print("⚠️  Nema data/diabetes.csv – koristim data/diabetes_sample.csv")
@@ -51,19 +50,43 @@ def _fmt(x, digits=3):
         return str(x)
 
 
+def _as_int_keys(maybe_dict):
+    """JSON često pretvori int ključeve u string; vrati verziju sa int ključevima."""
+    if not isinstance(maybe_dict, dict):
+        return {}
+    out = {}
+    for kk, vv in maybe_dict.items():
+        try:
+            out[int(kk)] = vv
+        except Exception:
+            out[kk] = vv
+    return out
+
+
 def _pretty_print_summary(out_dir: str):
     info = _read_json(os.path.join(out_dir, "dataset_info.json")) or {}
     summary = _read_json(os.path.join(out_dir, "summary.json")) or []
 
     # Dataset info
     _print_box("Dataset info")
-    print(f" train: {info.get('n_train', '?')}  "
-          f"val: {info.get('n_val', '?')}  "
-          f"test: {info.get('n_test', '?')}")
-    cb_tr = info.get("class_balance_train", {})
-    cb_va = info.get("class_balance_val", {})
-    cb_te = info.get("class_balance_test", {})
-    def pct(d, k): return f"{d.get(k, 0)*100:.1f}%"
+    print(
+        f" train: {info.get('n_train', '?')}  "
+        f"val: {info.get('n_val', '?')}  "
+        f"test: {info.get('n_test', '?')}"
+    )
+
+    # Normalizuj ključeve na int da se 0/1 lepo pročitaju
+    cb_tr = _as_int_keys(info.get("class_balance_train", {}))
+    cb_va = _as_int_keys(info.get("class_balance_val", {}))
+    cb_te = _as_int_keys(info.get("class_balance_test", {}))
+
+    def pct(d, k):
+        v = d.get(k, d.get(str(k), 0))
+        try:
+            return f"{float(v)*100:.1f}%"
+        except Exception:
+            return "-"
+
     print(f" balance train  -> 0:{pct(cb_tr, 0)}  1:{pct(cb_tr, 1)}")
     print(f" balance val    -> 0:{pct(cb_va, 0)}  1:{pct(cb_va, 1)}")
     print(f" balance test   -> 0:{pct(cb_te, 0)}  1:{pct(cb_te, 1)}")
@@ -71,6 +94,7 @@ def _pretty_print_summary(out_dir: str):
     # Models table
     if not summary:
         return
+
     _print_box("Rezime modela (val→odabir thr, test→izveštaj)")
 
     headers = ["Model", "Thr", "Val F1", "Val AUC", "Val AP", "Test F1", "Test AUC", "Test AP"]
@@ -78,52 +102,54 @@ def _pretty_print_summary(out_dir: str):
     rows = []
     for s in summary:
         row = [
-            s["model"],
-            _fmt(s["threshold"], 4),
-            _fmt(s["val_f1"]),
-            _fmt(s["val_auc"]),
-            _fmt(s["val_ap"]),
-            _fmt(s["test_f1"]),
-            _fmt(s["test_auc"]),
-            _fmt(s["test_ap"]),
+            s.get("model", "-"),
+            _fmt(s.get("threshold"), 4),
+            _fmt(s.get("val_f1")),
+            _fmt(s.get("val_auc")),
+            _fmt(s.get("val_ap")),
+            _fmt(s.get("test_f1")),
+            _fmt(s.get("test_auc")),
+            _fmt(s.get("test_ap")),
         ]
         rows.append(row)
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], len(cell))
 
     def line(ch="-"):
-        print(" " + "+".join(ch * (w+2) for w in widths))
+        print(" " + "+".join(ch * (w + 2) for w in widths))
 
-    # print header
+    # Header
     line("=")
     print(" " + " | ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
     line("=")
 
-    # print rows
+    # Rows
     for r in rows:
         print(" " + " | ".join(str(r[i]).ljust(widths[i]) for i in range(len(headers))))
     line("=")
 
+    # Izbor najboljeg modela (primarno test F1, pa test AUC)
     best = None
     for s in summary:
         if best is None:
             best = s
         else:
-            if (s["test_f1"] or 0) > (best["test_f1"] or 0) or (
-                    np.isclose(s["test_f1"], best["test_f1"]) and (s["test_auc"] or 0) > (best["test_auc"] or 0)
-            ):
+            s_f1 = s.get("test_f1") or 0
+            b_f1 = best.get("test_f1") or 0
+            if (s_f1 > b_f1) or (np.isclose(s_f1, b_f1) and (s.get("test_auc") or 0) > (best.get("test_auc") or 0)):
                 best = s
 
     if best:
-        print("\n🏆 Najbolji model:",
-              f"{best['model']}  (test F1={_fmt(best['test_f1'])}, "
-              f"AUC={_fmt(best['test_auc'])}, AP={_fmt(best['test_ap'])})")
+        print(
+            "\n🏆 Najbolji model:",
+            f"{best.get('model','-')}  (test F1={_fmt(best.get('test_f1'))}, "
+            f"AUC={_fmt(best.get('test_auc'))}, AP={_fmt(best.get('test_ap'))})"
+        )
 
-    # helpful pointers
+    # Helpful pointers
     print("\n📁 Grafike su u 'outputs/':")
     print("   • ROC_curves_val.png, ROC_curves_test.png")
     print("   • Precision–Recall_curves_val.png, Precision–Recall_curves_test.png")
-    print("   • <Model>/(val|test)_confusion_matrix.png")
     print("🧾 Sažetak: 'outputs/summary.json' i 'outputs/summary.csv'")
 
 
