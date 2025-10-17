@@ -12,47 +12,12 @@ from sklearn.metrics import (
     precision_recall_fscore_support, accuracy_score, confusion_matrix
 )
 
+from .metrics import (
+    scores_from_model, best_threshold_by_f1,
+    confusion_at_threshold, prec_recall_f1
+)
+
 from .utils import prepare_dataset, class_balance
-
-
-# pomoćne f-je
-def _scores_from_model(model: Any, X: np.ndarray) -> np.ndarray:
-    # radim predict_proba kad postoji (jasno je šta je verovatnoća za klasu 1)
-    if hasattr(model, "predict_proba"):
-        proba = model.predict_proba(X)
-        proba = np.asarray(proba)
-        if proba.ndim == 2 and proba.shape[1] == 2:
-            return proba[:, 1]  # kolona klase 1
-        return proba.ravel()   # fallback ako je drugačiji oblik
-
-    # Ako nema probe, koristim sta god model nudi kao skor -> predict
-    for name in ("decision_function", "predict_scores", "forward", "predict"):
-        if hasattr(model, name):
-            out = getattr(model, name)(X)
-            return np.asarray(out).ravel()
-
-    # Ako ništa od ovoga ne postoji, ne možemo da evaluišemo na isti način
-    raise AttributeError("Model nema metod za skor (predict_proba/decision_function/forward/predict)")
-
-
-def _best_threshold_by_f1(y_true: np.ndarray, y_score: np.ndarray) -> Tuple[float, Dict[str, float]]:
-    """
-    Nađe prag koji maksimizuje F1 na validaciji.
-    Efikasno: koristim set kandidata iz unique skora + sentinel 0.5.
-    """
-    uniq = np.unique(y_score)
-    cands = np.unique(np.concatenate([uniq, np.array([0.5], dtype=float)]))  # 0.5 kao razuman default
-    best = {"f1": -1.0, "precision": 0.0, "recall": 0.0, "accuracy": 0.0}
-    best_thr = 0.5
-    for thr in cands:
-        y_pred = (y_score >= thr).astype(int)
-        p, r, f1, _ = precision_recall_fscore_support(y_true, y_pred, beta=1.0, average="binary", zero_division=0)
-        acc = accuracy_score(y_true, y_pred)
-        # Ako F1 isti, biram veci recall (zelimo manje FN kod dijabetesa)
-        if (f1 > best["f1"]) or (np.isclose(f1, best["f1"]) and r > best["recall"]):
-            best = {"precision": float(p), "recall": float(r), "f1": float(f1), "accuracy": float(acc)}
-            best_thr = float(thr)
-    return best_thr, best
 
 
 @dataclass
@@ -83,11 +48,11 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
         raise AttributeError(f"Model '{name}' nema fit/train metod")
 
     # Skorovi na validaciji i izbor praga po F1
-    s_val = _scores_from_model(model, Xva)
-    thr, best_val = _best_threshold_by_f1(yva, s_val)
+    s_val = scores_from_model(model, Xva)
+    thr, best_val = best_threshold_by_f1(yva, s_val)
 
     # Fiksiram prag na testu – realnija procena generalizacije
-    s_test = _scores_from_model(model, Xte)
+    s_test = scores_from_model(model, Xte)
     y_pred_test = (s_test >= thr).astype(int)
 
     # Test metrike
