@@ -5,18 +5,15 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 import numpy as np
 import importlib
-
 from sklearn.metrics import (
     roc_curve, auc,
     precision_recall_curve, average_precision_score,
     precision_recall_fscore_support, accuracy_score, confusion_matrix
 )
-
 from .metrics import (
     scores_from_model, best_threshold_by_f1,
     confusion_at_threshold, prec_recall_f1
 )
-
 from .utils import prepare_dataset, class_balance
 
 
@@ -96,8 +93,6 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     with open(os.path.join(out_dir, name, "test_pr.json"), "w", encoding="utf-8") as f:
         json.dump({"precision": prec_t.tolist(), "recall": rec_t.tolist(), "ap": float(ap_t)}, f, indent=2)
 
-    with open(os.path.join(out_dir, name, "threshold.txt"), "w", encoding="utf-8") as f:
-        f.write(str(thr))  # čuvam prag odabran na validaciji
 
     return EvalResult(
         name=name,
