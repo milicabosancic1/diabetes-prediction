@@ -31,15 +31,10 @@ def _detect_best_family(outputs_dir: str) -> str:
             ):
                 best = s
     name = best["model"]
-    # Mapiranje na familiju (nazivi foldera ≠ nazivi klasa)
-    if name.startswith("KNN"):
-        return "KNN"
-    if name.startswith("LogReg"):
-        return "LogReg"
-    if name.startswith("MLP"):
-        return "MLP"
-    if name.startswith("NaiveBayes"):
-        return "NaiveBayes"
+    # Mapiranje na familiju
+    for prefix in ("KNN", "LogReg", "MLP", "NaiveBayes"):
+        if name.startswith(prefix):
+            return prefix
     return "LogReg"
 
 

@@ -89,38 +89,6 @@ def _plot_group_generic(outputs_dir: Path, split: str, kind: str):
     return out_path
 
 
-def _plot_confusion_matrix(cm, classes=("0", "1"), title="Confusion matrix", out_path=None):
-    cm = np.array(cm, dtype=float)
-    # normalizacija po redovima (da se vidi procenat po stvarnoj klasi)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        row_sums = cm.sum(axis=1, keepdims=True)
-        norm = np.divide(cm, row_sums, out=np.zeros_like(cm), where=row_sums != 0)
-
-    fig, ax = plt.subplots()
-    im = ax.imshow(norm, interpolation="nearest", cmap="Blues")
-    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    ax.set_title(title)
-    tick_marks = np.arange(len(classes))
-    ax.set_xticks(tick_marks)
-    ax.set_xticklabels(classes)
-    ax.set_yticks(tick_marks)
-    ax.set_yticklabels(classes)
-    ax.set_ylabel("True label")
-    ax.set_xlabel("Predicted label")
-
-    # upisujem i apsolutne vrednosti i procente
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            txt = f"{int(cm[i, j])}\n({norm[i, j]*100:.1f}%)"
-            ax.text(j, i, txt, ha="center", va="center", fontsize=9, color="black")
-
-    fig.tight_layout()
-    if out_path:
-        fig.savefig(out_path)
-    plt.close(fig)
-    return out_path
-
-
 def generate_all_plots(outputs_dir="outputs"):
     # glavna rutina za generisanje svih grafika na osnovu JSON-ova iz evaluacije
     out_dir = Path(outputs_dir)
@@ -132,19 +100,3 @@ def generate_all_plots(outputs_dir="outputs"):
     _plot_group_generic(out_dir, "val", "pr")
     _plot_group_generic(out_dir, "test", "pr")
 
-    # heatmap konfuzione matrice po modelu i splitu
-    for mdir in _find_model_dirs(out_dir):
-        for split in ("val", "test"):
-            metrics_path = mdir / f"{split}_metrics.json"
-            m = _load_json(metrics_path)
-            if not m:
-                continue
-            # pokusavam više kljuceva – zavisi kako je metrike zapisao evaluator
-            cm = m.get("confusion_matrix") or m.get("confusion") or m.get("cm")
-            if cm:
-                out_png = mdir / f"{split}_confusion_matrix.png"
-                _plot_confusion_matrix(
-                    cm,
-                    title=f"{mdir.name} — {split} confusion matrix",
-                    out_path=out_png,
-                )
