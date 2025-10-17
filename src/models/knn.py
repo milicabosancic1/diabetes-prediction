@@ -6,13 +6,15 @@ def _minkowski(a, b, p=2):
     Razdaljina po Minkowskom između SVAKOG reda u 'a' (n_samples, n_features)
     i vektora 'b' (n_features,). Podržava p=1 (L1), p=2 (L2), p=np.inf (Chebyshev),
     i opšti slučaj p>0.
+    * a je matrica (n_samples, n_features)
+    * b je pojedinačni vektor - n_features
     """
     if p == 1:
-        return np.sum(np.abs(a - b), axis=1)
+        return np.sum(np.abs(a - b), axis=1)  # Manhattan distance
     if p == 2:
-        return np.sqrt(np.sum((a - b) ** 2, axis=1))
+        return np.sqrt(np.sum((a - b) ** 2, axis=1))  # Euclidean distance
     if p == np.inf:
-        return np.max(np.abs(a - b), axis=1)
+        return np.max(np.abs(a - b), axis=1)  # Chebyshev distance (
     if p <= 0:
         raise ValueError("p must be > 0 or np.inf")
     return np.sum(np.abs(a - b) ** p, axis=1) ** (1.0 / p)
@@ -22,15 +24,14 @@ class KNN:
     def __init__(self, n_neighbors=7, p=2, weights="uniform"):
         # k: broj najbližih komšija
         self.k = int(n_neighbors)
-        # p za Minkowski (1=L1, 2=L2, inf=Chebyshev)
+        # p - tip radzaljine za Minkowski (1=L1, 2=L2, inf=Chebyshev)
         self.p = p
         # dodeljivanje tezina: 'uniform' ili 'distance'
         self.weights = weights
-        self.X = None
+        self.X = None   # pamti podatke tu, jer sve racuna u predict fazi
         self.y = None
         self.classes_ = None
         self.n_features_ = None
-
 
     # fit za trening
     def fit(self, X, y, X_val=None, y_val=None):
@@ -45,7 +46,7 @@ class KNN:
             raise ValueError("n_neighbors (k) must be >= 1.")
         self.X = X
         self.y = y
-        self.classes_ = np.unique(y)  # redosled klasa zaključujemo iz podataka
+        self.classes_ = np.unique(y)  # redosled klasa zaključujemo iz podataka [0,1]
         self.n_features_ = X.shape[1]
         return self
 
@@ -74,7 +75,7 @@ class KNN:
         raise ValueError("weights must be 'uniform' or 'distance'.")
 
     def predict_proba(self, X):
-        # Vraća verovatnoće po klasama (redovi = uzorci, kolone = klase po self.classes_)
+        # Vraća verovatnoće po klasama (redovi = uzorci, kolone = klase po self.classes_ = rez)
         if self.X is None:
             raise RuntimeError("Call fit before predict_proba.")
         X = self._check_X(X)
@@ -84,15 +85,15 @@ class KNN:
         for x in X:
             # Distanca do svih train primera
             d = _minkowski(self.X, x, p=self.p)
-            # O(O(n)) izbor k najbližih bez kompletnog sortiranja
-            idx = np.argpartition(d, k-1)[:k]
-            # Stabilno presortiranje tih k po stvarnoj udaljenosti
+            idx = np.argpartition(d, k-1)[:k]  # izaberem indekse k najmanjih distanci
+
+            # sortiram tih k po stvarnoj rastucoj udaljenosti
             idx = idx[np.argsort(d[idx], kind="stable")]
-            yy = self.y[idx]
-            dd = d[idx]
-            w = self._neighbor_weights(dd)
+            yy = self.y[idx]  # klase izabranih k komšija
+            dd = d[idx]  # njihove distance
+            w = self._neighbor_weights(dd)   # računam težine po komšiji
             probs = np.zeros(len(self.classes_), dtype=float)
-            denom = w.sum()
+            denom = w.sum()    #zbir tezina za normalizaciju
             if denom == 0:
                 # ravnomerna podela
                 probs[:] = 1.0 / len(self.classes_)
@@ -102,10 +103,3 @@ class KNN:
             out.append(probs)
         return np.vstack(out)
 
-    def predict(self, X, threshold=0.5):
-        # Ako je binarna klasifikacija i dat prag, koristi kolonu klase 1
-        proba = self.predict_proba(X)
-        if proba.shape[1] == 2 and threshold is not None:
-            return np.where(proba[:, 1] >= float(threshold), self.classes_[1], self.classes_[0])
-        # Inače uzima klasu sa najvećom verovatnoćom
-        return self.classes_[np.argmax(proba, axis=1)]
