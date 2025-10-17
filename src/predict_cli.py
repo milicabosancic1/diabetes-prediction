@@ -1,8 +1,10 @@
-import argparse, json
+import argparse
+import json
 from typing import Dict
 from src.infer import predict_single
 from src.utils import FEATURES
 
+# opisi polja da korisnik zna sta da unese
 _HINTS = {
     "Pregnancies": "broj trudnoća (0–17, ceo broj)",
     "Glucose": "glukoza (mg/dL, tipično 70–200; 0 = nepoznato)",
@@ -14,6 +16,7 @@ _HINTS = {
     "Age": "godine (npr. 21–81)",
 }
 
+# primer ulaza – za testiranje bez kucanja
 _EXAMPLE = {
     "Pregnancies": 2,
     "Glucose": 130,
@@ -25,14 +28,20 @@ _EXAMPLE = {
     "Age": 35
 }
 
+
 def _prompt_yes_no(q: str) -> bool:
+    # Jednostavan da/ne prompt sa tolerantnim unosom
     while True:
         ans = input(q).strip().lower()
-        if ans in ("da","d","yes","y"): return True
-        if ans in ("ne","n","no"): return False
-        print("Molim odgovori sa 'da' ili 'ne'.")
+        if ans in ("da", "d", "yes", "y"):
+            return True
+        if ans in ("ne", "n", "no"):
+            return False
+        print("Potrebno je odgovoriti sa 'da' ili 'ne'.")
+
 
 def _prompt_float(name: str, hint: str) -> float:
+    # vrti se dok korisnik ne unese broj (tacka za decimale)
     while True:
         raw = input(f"  • {name} ({hint}): ").strip()
         try:
@@ -40,42 +49,51 @@ def _prompt_float(name: str, hint: str) -> float:
         except ValueError:
             print("  ↳ Unos mora biti broj (koristi tačku za decimalni zarez). Pokušaj ponovo.")
 
+
 def _collect_interactive() -> Dict[str, float]:
+    # interaktivno prikupljanje svih feature-a redom iz FEATURES
     print("\nUnos podataka (za metrike gde je 0 dozvoljeno kao 'nepoznato' – slobodno unesi 0)")
     vals = {}
     for key in FEATURES:
         vals[key] = _prompt_float(key, _HINTS.get(key, "broj"))
     return vals
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Interaktivna procena rizika (Diabetes) – CLI")
+    # CLI interfejs
+    parser = argparse.ArgumentParser(description="Interaktivna procena rizika nastanka dijabetesa")
     parser.add_argument("--csv", default="data/diabetes.csv", help="putanja do CSV-a (Pima)")
-    parser.add_argument("--family", choices=["NaiveBayes","KNN","LogReg","MLP"], default=None,
+    parser.add_argument("--family", choices=["NaiveBayes", "KNN", "LogReg", "MLP"], default=None,
                         help="familija modela (ako izostaviš, bira se najbolja iz outputs/summary.json)")
     parser.add_argument("--json", type=str, default=None,
-                        help="JSON sa poljima (Pregnancies, Glucose, ... Age). Ako je zadat, preskače se interaktivni unos.")
+                        help="JSON sa poljima (Pregnancies, Glucose, ... Age). "
+                             "Ako je zadat, preskače se interaktivni unos.")
     args = parser.parse_args()
 
     print("\nDa li želiš da uneseš svoje podatke? (da/ne)")
     if args.json is None and _prompt_yes_no("> "):
-        user_input = _collect_interactive()
+        user_input = _collect_interactive()  # rucni unos
     elif args.json:
-        user_input = json.loads(args.json)
+        user_input = json.loads(args.json)   # ulaz preko argumenta
     else:
-        print("\nNisi izabrala interaktivni unos. Evo primer JSON formata za --json:")
+        # ako nista nije uneto, ispisi primer i izadji
+        print("\nNisi izabrao/la interaktivni unos. Evo primer JSON formata za --json:")
         print(json.dumps(_EXAMPLE, indent=2))
         return 0
 
+    # Glavna inferencija – predict_single internо ucitava pipeline i prag
     res = predict_single(user_input, csv_path=args.csv, family=args.family)
 
+    # tekst za rezultat
     label_txt = "POVIŠEN RIZIK" if res["label"] == 1 else "nema povišen rizik"
     print("\n=== Rezultat ===")
     print(f" Model:       {res['family']}")
-    print(f" Prag (thr):  {res['threshold']:.4f}")
-    print(f" Skor:        {res['score']:.4f}")
+    print(f" Prag (thr):  {res['threshold']:.4f}")  # prag iz validacije
+    print(f" Skor:        {res['score']:.4f}")      # kontinuirani skor (pre praga)
     print(f" Odluka:      {label_txt}")
     print("\nNapomena: edukativni alat; ne zamenjuje medicinski savet.")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
