@@ -9,6 +9,7 @@ from src.train_eval import train_and_evaluate_all
 
 BASE_DIR = os.path.dirname(__file__)
 
+
 def resolve_csv_path() -> str:
     data_csv = os.path.join(BASE_DIR, "data", "diabetes.csv")
     if os.path.isfile(data_csv):
@@ -25,6 +26,7 @@ def resolve_csv_path() -> str:
         "Dodaj CSV u folder data/ pa pokreni ponovo."
     )
 
+
 def _read_json(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -32,11 +34,13 @@ def _read_json(path):
     except FileNotFoundError:
         return None
 
+
 def _print_box(title: str):
     line = "═" * (len(title) + 2)
     print(f"\n╔{line}╗")
     print(f"║ {title} ║")
     print(f"╚{line}╝")
+
 
 def _fmt(x, digits=3):
     if x is None:
@@ -46,22 +50,23 @@ def _fmt(x, digits=3):
     except Exception:
         return str(x)
 
+
 def _pretty_print_summary(out_dir: str):
     info = _read_json(os.path.join(out_dir, "dataset_info.json")) or {}
     summary = _read_json(os.path.join(out_dir, "summary.json")) or []
 
     # Dataset info
     _print_box("Dataset info")
-    print(f" train: {info.get('n_train','?')}  "
-          f"val: {info.get('n_val','?')}  "
-          f"test: {info.get('n_test','?')}")
+    print(f" train: {info.get('n_train', '?')}  "
+          f"val: {info.get('n_val', '?')}  "
+          f"test: {info.get('n_test', '?')}")
     cb_tr = info.get("class_balance_train", {})
     cb_va = info.get("class_balance_val", {})
     cb_te = info.get("class_balance_test", {})
-    def pct(d, k): return f"{d.get(k,0)*100:.1f}%"
-    print(f" balance train  -> 0:{pct(cb_tr,0)}  1:{pct(cb_tr,1)}")
-    print(f" balance val    -> 0:{pct(cb_va,0)}  1:{pct(cb_va,1)}")
-    print(f" balance test   -> 0:{pct(cb_te,0)}  1:{pct(cb_te,1)}")
+    def pct(d, k): return f"{d.get(k, 0)*100:.1f}%"
+    print(f" balance train  -> 0:{pct(cb_tr, 0)}  1:{pct(cb_tr, 1)}")
+    print(f" balance val    -> 0:{pct(cb_va, 0)}  1:{pct(cb_va, 1)}")
+    print(f" balance test   -> 0:{pct(cb_te, 0)}  1:{pct(cb_te, 1)}")
 
     # Models table
     if not summary:
@@ -69,7 +74,7 @@ def _pretty_print_summary(out_dir: str):
     _print_box("Rezime modela (val→odabir thr, test→izveštaj)")
 
     headers = ["Model", "Thr", "Val F1", "Val AUC", "Val AP", "Test F1", "Test AUC", "Test AP"]
-    widths  = [max(len(h), 6) for h in headers]
+    widths = [max(len(h), 6) for h in headers]
     rows = []
     for s in summary:
         row = [
@@ -121,6 +126,7 @@ def _pretty_print_summary(out_dir: str):
     print("   • <Model>/(val|test)_confusion_matrix.png")
     print("🧾 Sažetak: 'outputs/summary.json' i 'outputs/summary.csv'")
 
+
 def main() -> int:
     try:
         csv_path = resolve_csv_path()
@@ -133,6 +139,7 @@ def main() -> int:
     except Exception as e:
         print(f"❌ Greška: {e}")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())
