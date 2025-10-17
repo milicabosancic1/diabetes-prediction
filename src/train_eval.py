@@ -15,19 +15,23 @@ from sklearn.metrics import (
 from .utils import prepare_dataset, class_balance
 
 
-# pomocne f-je
+# pomoćne f-je
 def _scores_from_model(model: Any, X: np.ndarray) -> np.ndarray:
-    """Vrati 'score' (vece -> veca šansa za klasu 1)"""
+    # radim predict_proba kad postoji (jasno je šta je verovatnoća za klasu 1)
     if hasattr(model, "predict_proba"):
         proba = model.predict_proba(X)
         proba = np.asarray(proba)
         if proba.ndim == 2 and proba.shape[1] == 2:
-            return proba[:, 1]
-        return proba.ravel()
+            return proba[:, 1]  # kolona klase 1
+        return proba.ravel()   # fallback ako je drugačiji oblik
+
+    # Ako nema probe, koristim sta god model nudi kao skor -> predict
     for name in ("decision_function", "predict_scores", "forward", "predict"):
         if hasattr(model, name):
             out = getattr(model, name)(X)
             return np.asarray(out).ravel()
+
+    # Ako ništa od ovoga ne postoji, ne možemo da evaluišemo na isti način
     raise AttributeError("Model nema metod za skor (predict_proba/decision_function/forward/predict)")
 
 
@@ -37,13 +41,14 @@ def _best_threshold_by_f1(y_true: np.ndarray, y_score: np.ndarray) -> Tuple[floa
     Efikasno: koristim set kandidata iz unique skora + sentinel 0.5.
     """
     uniq = np.unique(y_score)
-    cands = np.unique(np.concatenate([uniq, np.array([0.5], dtype=float)]))
+    cands = np.unique(np.concatenate([uniq, np.array([0.5], dtype=float)]))  # 0.5 kao razuman default
     best = {"f1": -1.0, "precision": 0.0, "recall": 0.0, "accuracy": 0.0}
     best_thr = 0.5
     for thr in cands:
         y_pred = (y_score >= thr).astype(int)
         p, r, f1, _ = precision_recall_fscore_support(y_true, y_pred, beta=1.0, average="binary", zero_division=0)
         acc = accuracy_score(y_true, y_pred)
+        # Ako F1 isti, biram veci recall (zelimo manje FN kod dijabetesa)
         if (f1 > best["f1"]) or (np.isclose(f1, best["f1"]) and r > best["recall"]):
             best = {"precision": float(p), "recall": float(r), "f1": float(f1), "accuracy": float(acc)}
             best_thr = float(thr)
@@ -52,6 +57,7 @@ def _best_threshold_by_f1(y_true: np.ndarray, y_score: np.ndarray) -> Tuple[floa
 
 @dataclass
 class EvalResult:
+    # Jednostavan paket rezultata da lako serijalizujem i dalje obradjujem
     name: str
     val: Dict[str, float]
     test: Dict[str, float]
@@ -62,13 +68,13 @@ class EvalResult:
     pr_test: Dict[str, List[float]]
 
 
-# evaluacija jednog modela, pomocna funkcija da skratim eval all
+# evaluacija jednog modela, pomoćna funkcija da skratim eval all
 def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     Xtr, ytr = data.X_train, data.y_train
     Xva, yva = data.X_val,   data.y_val
     Xte, yte = data.X_test,  data.y_test
 
-    # Train
+    # Trening
     if hasattr(model, "fit"):
         model.fit(Xtr, ytr)
     elif hasattr(model, "train"):
@@ -76,19 +82,20 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     else:
         raise AttributeError(f"Model '{name}' nema fit/train metod")
 
-    # Scores
+    # Skorovi na validaciji i izbor praga po F1
     s_val = _scores_from_model(model, Xva)
     thr, best_val = _best_threshold_by_f1(yva, s_val)
 
+    # Fiksiram prag na testu – realnija procena generalizacije
     s_test = _scores_from_model(model, Xte)
     y_pred_test = (s_test >= thr).astype(int)
 
     # Test metrike
     p, r, f1, _ = precision_recall_fscore_support(yte, y_pred_test, average="binary", zero_division=0)
     acc = accuracy_score(yte, y_pred_test)
-    tn, fp, fn, tp = confusion_matrix(yte, y_pred_test, labels=[0,1]).ravel()
+    tn, fp, fn, tp = confusion_matrix(yte, y_pred_test, labels=[0, 1]).ravel()
 
-    # ROC/PR krive i površine (sklearn)
+    # ROC/PR krive i povrsine
     fpr_v, tpr_v, _ = roc_curve(yva, s_val)
     fpr_t, tpr_t, _ = roc_curve(yte, s_test)
     auc_v = auc(fpr_v, tpr_v)
@@ -99,7 +106,7 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     ap_v = average_precision_score(yva, s_val)
     ap_t = average_precision_score(yte, s_test)
 
-    # Pack
+    # pakujem rezultate – val koristi najbolji prag, test koristi taj isti prag
     val_metrics = {**best_val, "roc_auc": float(auc_v), "pr_ap": float(ap_v)}
     test_metrics = {
         "precision": float(p), "recall": float(r), "f1": float(f1), "accuracy": float(acc),
@@ -107,7 +114,7 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
         "roc_auc": float(auc_t), "pr_ap": float(ap_t), "threshold_used": float(thr),
     }
 
-    # cuvanje u JSON fajlove
+    # cuvanje svega u fajlove da kasnije lakse generisem grafikone/izvestaje
     os.makedirs(os.path.join(out_dir, name), exist_ok=True)
     with open(os.path.join(out_dir, name, "val_metrics.json"), "w", encoding="utf-8") as f:
         json.dump(val_metrics, f, indent=2)
@@ -125,7 +132,7 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
         json.dump({"precision": prec_t.tolist(), "recall": rec_t.tolist(), "ap": float(ap_t)}, f, indent=2)
 
     with open(os.path.join(out_dir, name, "threshold.txt"), "w", encoding="utf-8") as f:
-        f.write(str(thr))
+        f.write(str(thr))  # čuvam prag odabran na validaciji
 
     return EvalResult(
         name=name,
@@ -143,10 +150,11 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
 def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
                            out_dir: str = "outputs",
                            seed: int = 42) -> List[EvalResult]:
+    # Glavni pipeline: priprema podataka → treniranje → evaluacija → izvoz rezultata
     os.makedirs(out_dir, exist_ok=True)
     data = prepare_dataset(csv_path, seed=seed)
 
-    # info o skupu
+    # Info o skupu za log/izvestaj
     with open(os.path.join(out_dir, "dataset_info.json"), "w", encoding="utf-8") as f:
         json.dump({
             "n_train": int(len(data.y_train)),
@@ -160,17 +168,20 @@ def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
     results: List[EvalResult] = []
 
     def try_make(module_name: str, class_names: List[str], kwargs: Dict[str, Any]) -> Any:
+        """
+        Pokusaj da importujes modul i konstruses klasu po imenu.
+        """
         try:
             mod = importlib.import_module(module_name)
         except ModuleNotFoundError:
-            return None
+            return None  # preskočim ako model nije implementiran
         for cname in class_names:
             if hasattr(mod, cname):
                 cls = getattr(mod, cname)
                 try:
-                    return cls(**kwargs)
+                    return cls(**kwargs)  # probam sa zadatim argumentima
                 except TypeError:
-                    return cls()
+                    return cls()          # fallback bez argumenata
         return None
 
     # 1) Naive Bayes
@@ -183,7 +194,7 @@ def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
     if knn is not None:
         results.append(_evaluate_single("KNN", knn, data, out_dir))
 
-    # 3) Logistic Regression
+    # 3) Logistic Regression (custom implementacija – lr, l2, epohe)
     lr = try_make("src.models.logistic_regression", ["LogisticRegression"], {"lr": 0.1, "l2": 0.0, "max_epochs": 200})
     if lr is not None:
         results.append(_evaluate_single("LogReg", lr, data, out_dir))
@@ -193,7 +204,7 @@ def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
     if mlp is not None:
         results.append(_evaluate_single("MLP", mlp, data, out_dir))
 
-    # Summary
+    # sazetak po modelima
     summary = [{
         "model": r.name,
         "threshold": r.threshold,
@@ -208,7 +219,7 @@ def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
     with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
-    # CSV
+    # Izvoz i u CSV
     lines = ["model,threshold,val_f1,val_auc,val_ap,test_f1,test_auc,test_ap"]
     for s in summary:
         lines.append(",".join([
