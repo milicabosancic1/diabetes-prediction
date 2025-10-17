@@ -1,11 +1,6 @@
 from __future__ import annotations
 import numpy as np
 from typing import Dict, Tuple
-from sklearn.metrics import (
-    roc_curve, auc,
-    precision_recall_curve, average_precision_score,
-    precision_recall_fscore_support, accuracy_score, confusion_matrix
-)
 
 
 def scores_from_model(model, X) -> np.ndarray:
