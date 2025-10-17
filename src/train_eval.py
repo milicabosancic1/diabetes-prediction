@@ -2,8 +2,7 @@ from __future__ import annotations
 import os
 import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
-import numpy as np
+from typing import Any, Dict, List
 import importlib
 from sklearn.metrics import (
     roc_curve, auc,
@@ -39,16 +38,14 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     # Trening
     if hasattr(model, "fit"):
         model.fit(Xtr, ytr)
-    elif hasattr(model, "train"):
-        model.train(Xtr, ytr)
     else:
         raise AttributeError(f"Model '{name}' nema fit/train metod")
 
     # Skorovi na validaciji i izbor praga po F1
     s_val = scores_from_model(model, Xva)
-    thr, best_val = best_threshold_by_f1(yva, s_val)
+    thr, best_val = best_threshold_by_f1(yva, s_val)  # prosledim rezultate modela i valid. rez da odredim najbolji prag klasif.
 
-    # Fiksiram prag na testu – realnija procena generalizacije
+    # Fiksiram prag na testu
     s_test = scores_from_model(model, Xte)
     y_pred_test = (s_test >= thr).astype(int)
 
@@ -58,9 +55,9 @@ def _evaluate_single(name: str, model: Any, data, out_dir: str) -> EvalResult:
     tn, fp, fn, tp = confusion_matrix(yte, y_pred_test, labels=[0, 1]).ravel()
 
     # ROC/PR krive i povrsine
-    fpr_v, tpr_v, _ = roc_curve(yva, s_val)
+    fpr_v, tpr_v, _ = roc_curve(yva, s_val)  #false positive, true positive
     fpr_t, tpr_t, _ = roc_curve(yte, s_test)
-    auc_v = auc(fpr_v, tpr_v)
+    auc_v = auc(fpr_v, tpr_v)  # povrsina ispod krive
     auc_t = auc(fpr_t, tpr_t)
 
     prec_v, rec_v, _ = precision_recall_curve(yva, s_val)
@@ -179,7 +176,7 @@ def train_and_evaluate_all(csv_path: str = "data/diabetes.csv",
     with open(os.path.join(out_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
-    # Izvoz i u CSV
+    # Izvoz i u summary CSV
     lines = ["model,threshold,val_f1,val_auc,val_ap,test_f1,test_auc,test_ap"]
     for s in summary:
         lines.append(",".join([

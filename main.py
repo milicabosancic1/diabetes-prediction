@@ -14,7 +14,7 @@ def resolve_csv_path() -> str:
     if os.path.isfile(data_csv):
         return data_csv
 
-    # Fallback na sample ako postoji
+    # Fallback na sample ako ne postoji diabetes.csv
     sample_csv = os.path.join(BASE_DIR, "data", "diabetes_sample.csv")
     if os.path.isfile(sample_csv):
         print("⚠️  Nema data/diabetes.csv – koristim data/diabetes_sample.csv")

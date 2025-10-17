@@ -31,6 +31,8 @@ class KNN:
         self.classes_ = None
         self.n_features_ = None
 
+
+    # fit za trening
     def fit(self, X, y, X_val=None, y_val=None):
         # Pamti ceo train skup (lazy learner)
         X = np.asarray(X, dtype=float)

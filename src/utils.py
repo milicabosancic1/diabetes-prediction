@@ -46,7 +46,7 @@ def _load_csv(csv_path: str) -> pd.DataFrame:
     df = pd.read_csv(csv_path, encoding="utf-8")
     missing = [c for c in FEATURES + [TARGET] if c not in df.columns]
     if missing:
-        # Brzo obaveštenje ako dataset nije očekivanog formata
+        # obavestenje ako dataset nema ocekivane atribute
         raise ValueError(f"CSV fajl nema očekivane kolone: {missing}")
 
     # Konverzija u numericke vrednosti ako se pojavi string (greške → NaN)
@@ -82,12 +82,12 @@ def prepare_dataset(
     y = df[TARGET].values.astype(int)
 
     # Podela na train/val/test = 70/15/15
-    # Koristim stratify da zadržim odnos klasa kroz sve skupove
+    # Koristim stratify da zadržim odnos klasa (0/1) kroz sve skupove
     X_train, X_temp, y_train, y_temp = train_test_split(
         X, y, test_size=(1 - train_p), random_state=seed, stratify=y
     )
     # Relativni udeo validacije u preostalom delu (val + test)
-    rel_val = val_p / (val_p + test_p)
+    rel_val = val_p / (val_p + test_p)  # ostatak od 30% delim na dva dela po 15%
     X_val, X_test, y_val, y_test = train_test_split(
         X_temp, y_temp, test_size=(1 - rel_val), random_state=seed, stratify=y_temp
     )
@@ -98,7 +98,7 @@ def prepare_dataset(
     X_val_imp = imputer.transform(X_val)
     X_test_imp = imputer.transform(X_test)
 
-    # Standardizacija po statistici iz train skupa (izbegavanje curenja)
+    # Standardizacija po statistici iz train skupa
     scaler = StandardScaler()
     X_train_std = scaler.fit_transform(X_train_imp)
     X_val_std = scaler.transform(X_val_imp)
@@ -106,8 +106,8 @@ def prepare_dataset(
 
     # cuvam statistike da mogu kasnije da interpretiram/rekreiram obradu
     stats = {
-        "mean": scaler.mean_,
-        "std": scaler.scale_,
+        "mean": scaler.mean_,    #srednja vrednost
+        "std": scaler.scale_,  #standardna devijacija
         "median": imputer.statistics_,
     }
 
